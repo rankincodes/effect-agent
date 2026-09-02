@@ -42480,6 +42480,184 @@ var InteractiveBrowserError = exports_Schema.Union([
 
 class InteractiveBrowser extends exports_Context.Service()("@effect-agent/sandbox/InteractiveBrowser") {
 }
+// packages/sandbox/src/protected-browser.ts
+var CredentialOrigin = exports_Schema.String.check(exports_Schema.makeFilter((value4) => value4.startsWith("https://") && exports_Schema.is(InteractiveBrowserHost)(value4.slice(8))));
+var BrowserReference = exports_Schema.String.check(exports_Schema.isUUID());
+var CredentialKind = exports_Schema.Literals(["login", "card"]);
+var CredentialFieldRole = exports_Schema.Literals([
+  "username",
+  "password",
+  "card-name",
+  "card-number",
+  "card-expiry",
+  "card-expiry-month",
+  "card-expiry-year",
+  "card-security-code"
+]);
+var Label = exports_Schema.String.check(exports_Schema.isMaxLength(200));
+
+class CredentialTarget extends exports_Schema.Class("CredentialTarget")({
+  topOrigin: CredentialOrigin,
+  frameOrigin: CredentialOrigin,
+  recipientOrigin: CredentialOrigin,
+  document: BrowserReference,
+  frame: BrowserReference,
+  form: BrowserReference
+}) {
+}
+
+class ProtectedBrowserControl extends exports_Schema.Class("ProtectedBrowserControl")({
+  ref: BrowserReference,
+  target: CredentialTarget,
+  role: exports_Schema.Union([
+    CredentialFieldRole,
+    exports_Schema.Literals(["submit", "link", "button", "unsupported"])
+  ]),
+  label: Label
+}) {
+}
+
+class ProtectedBrowserObservation extends exports_Schema.Class("ProtectedBrowserObservation")({
+  document: BrowserReference,
+  topOrigin: CredentialOrigin,
+  text: exports_Schema.String.check(exports_Schema.isMaxLength(64 * 1024)),
+  controls: exports_Schema.Array(ProtectedBrowserControl).check(exports_Schema.isMaxLength(64)),
+  truncated: exports_Schema.Boolean,
+  observation: exports_Schema.Literals(["before-exposure", "approved-after-exposure"])
+}) {
+}
+
+class CredentialOfferMetadata extends exports_Schema.Class("CredentialOfferMetadata")({
+  label: Label,
+  brand: exports_Schema.optionalKey(Label),
+  lastFour: exports_Schema.optionalKey(exports_Schema.String.check(exports_Schema.isPattern(/^\d{4}$/)))
+}) {
+}
+
+class CredentialOffer extends exports_Schema.Class("CredentialOffer")({
+  ref: BrowserReference,
+  kind: CredentialKind,
+  metadata: CredentialOfferMetadata
+}) {
+}
+
+class ListCredentialOffers extends exports_Schema.Class("ListCredentialOffers")({
+  kind: CredentialKind,
+  target: BrowserReference
+}) {
+}
+
+class UseCredential extends exports_Schema.Class("UseCredential")({
+  offer: BrowserReference,
+  fields: exports_Schema.Array(exports_Schema.Struct({ ref: BrowserReference, role: CredentialFieldRole })).check(exports_Schema.isMinLength(1), exports_Schema.isMaxLength(8)),
+  submit: exports_Schema.optionalKey(BrowserReference)
+}) {
+}
+
+class ProtectedBrowserNavigate extends exports_Schema.Class("ProtectedBrowserNavigate")({
+  url: exports_Schema.String.check(exports_Schema.isMaxLength(8192))
+}) {
+}
+
+class ProtectedBrowserClick extends exports_Schema.Class("ProtectedBrowserClick")({
+  ref: BrowserReference
+}) {
+}
+var CredentialDispatch = exports_Schema.Literals([
+  "not-dispatched",
+  "possibly-dispatched",
+  "dispatched"
+]);
+var CredentialMilestone = exports_Schema.Literals([
+  "none",
+  "partial-fill",
+  "filled",
+  "submission-dispatched"
+]);
+var ProtectedObservationState = exports_Schema.Literals([
+  "before-exposure",
+  "protected",
+  "approved-after-exposure",
+  "closed"
+]);
+var ProtectedCleanup = exports_Schema.Literals(["not-requested", "confirmed", "unconfirmed"]);
+var Evidence = {
+  dispatch: CredentialDispatch,
+  milestone: CredentialMilestone,
+  observation: ProtectedObservationState,
+  cleanup: ProtectedCleanup
+};
+
+class ProtectedBrowserError extends exports_Schema.TaggedError()("ProtectedBrowserError", {
+  reason: exports_Schema.Literals([
+    "denied",
+    "missing-credential",
+    "stale-reference",
+    "unsupported",
+    "needs-attention",
+    "busy",
+    "closed",
+    "limit",
+    "timeout",
+    "provider",
+    "resolver",
+    "outcome-unknown",
+    "observation-blocked"
+  ]),
+  ...Evidence
+}) {
+}
+
+class CredentialUseResult extends exports_Schema.Class("CredentialUseResult")({
+  ...Evidence,
+  authentication: exports_Schema.Literal("unverified")
+}) {
+}
+var SecretText = exports_Schema.Redacted(exports_Schema.NonEmptyString.check(exports_Schema.isMaxLength(1024)));
+var LoginCredential = exports_Schema.TaggedStruct("LoginCredential", {
+  username: SecretText,
+  password: SecretText
+});
+var CardCredential = exports_Schema.TaggedStruct("CardCredential", {
+  name: SecretText,
+  number: exports_Schema.Redacted(exports_Schema.String.check(exports_Schema.isPattern(/^\d{12,19}$/))),
+  expiry: SecretText,
+  expiryMonth: exports_Schema.Redacted(exports_Schema.String.check(exports_Schema.isPattern(/^(0[1-9]|1[0-2])$/))),
+  expiryYear: exports_Schema.Redacted(exports_Schema.String.check(exports_Schema.isPattern(/^\d{4}$/))),
+  securityCode: exports_Schema.optionalKey(exports_Schema.Redacted(exports_Schema.String.check(exports_Schema.isPattern(/^\d{3,4}$/))))
+});
+var BrowserCredentialMaterial = exports_Schema.Union([LoginCredential, CardCredential]);
+
+class CredentialAccessError extends exports_Schema.TaggedError()("CredentialAccessError", {
+  reason: exports_Schema.Literals(["denied", "missing-credential", "needs-attention", "resolver"])
+}) {
+}
+
+class BrowserCredentialAccess extends exports_Context.Service()("@effect-agent/sandbox/BrowserCredentialAccess") {
+}
+
+class ProtectedBrowser extends exports_Context.Service()("@effect-agent/sandbox/ProtectedBrowser") {
+}
+
+class ProtectedBrowserSession extends exports_Context.Service()("@effect-agent/sandbox/ProtectedBrowserSession") {
+  static layer(policy2) {
+    return exports_Layer.effect(this)(exports_Effect.gen(function* () {
+      const browser = yield* ProtectedBrowser;
+      const access3 = yield* BrowserCredentialAccess;
+      const scope3 = yield* exports_Effect.scope;
+      const cached3 = yield* exports_Effect.cached(browser.open(policy2).pipe(exports_Effect.provideService(BrowserCredentialAccess, access3), exports_Effect.provideService(exports_Scope.Scope, scope3)));
+      return {
+        get: exports_Effect.suspend(() => scope3.state._tag === "Closed" ? exports_Effect.fail(new ProtectedBrowserError({
+          reason: "closed",
+          dispatch: "not-dispatched",
+          milestone: "none",
+          observation: "closed",
+          cleanup: "not-requested"
+        })) : cached3)
+      };
+    }));
+  }
+}
 // packages/sandbox/src/page-capture.ts
 var MAX_OUTPUT_BYTES2 = 8 * 1024 * 1024;
 var MAX_LINKS = 4096;
