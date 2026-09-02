@@ -16,7 +16,7 @@ import {
   MemoryRpcError,
 } from "@effect-agent/storage-cloudflare";
 import { Principal } from "@effect-agent/thread";
-import { Deferred, Effect, Layer, Schema } from "effect";
+import { Clock, Deferred, Effect, Layer, Schema } from "effect";
 import { DurableObjectState } from "effect-cf";
 
 export const MemoryProjects = MemoryNamespace.define({
@@ -88,6 +88,7 @@ export const memoryFaults = new Map<
 >();
 export const slowStarted = new Map<string, Deferred.Deferred<void>>();
 export const slowFinished = new Map<string, Deferred.Deferred<void>>();
+export const memoryClocks = new Map<string, Clock.Clock>();
 export const memoryAuthorizer = Layer.effect(
   MemoryOwnerAuthorizer,
   Effect.gen(function* () {
@@ -115,6 +116,15 @@ export const memoryAuthorizer = Layer.effect(
       }),
     };
   }),
+).pipe(
+  Layer.merge(
+    Layer.effect(Clock.Clock)(
+      Effect.gen(function* () {
+        const { namespace } = yield* MemoryOwnerIdentity;
+        return memoryClocks.get(namespace.address) ?? (yield* Clock.Clock);
+      }),
+    ),
+  ),
 );
 export const memoryFailpoints = Layer.effect(
   MemoryMutationFailpoint,
