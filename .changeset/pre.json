@@ -52,6 +52,7 @@
     "cloudflare-binding-layers",
     "cloudflare-code-mode-host-bridge",
     "cloudflare-context-compactor",
+    "cloudflare-layer-from-bindings",
     "cloudflare-shared-memory",
     "code-mode-drop-allow-experimental",
     "code-mode-pass-scope",
